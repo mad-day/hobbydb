@@ -1,5 +1,4 @@
-MIT License
-
+/*
 Copyright (c) 2018 Simon Schmidt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,3 +18,32 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
+
+
+package protocol
+
+import (
+	"net/textproto"
+)
+
+type cctx struct{
+	C *textproto.Conn
+}
+
+func (c *cctx) perform() error {
+	rl,err := c.C.ReadLine()
+	if err!=nil { return err }
+	err = c.C.PrintfLine("Hi! %s",rl)
+	if err!=nil { return err }
+	return err
+}
+
+func Perform(c *textproto.Conn) {
+	cc := &cctx{C:c}
+	for {
+		err := cc.perform()
+		if err!=nil { return }
+	}
+}
+
