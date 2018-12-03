@@ -26,6 +26,11 @@ package protocol
 import (
 	"net/textproto"
 )
+/*
+ TODO use:
+   "github.com/evanphx/json-patch"
+   maybe "gopkg.in/src-d/go-vitess.v1"
+*/
 
 type cctx struct{
 	C *textproto.Conn
