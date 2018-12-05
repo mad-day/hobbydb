@@ -106,16 +106,16 @@ func (i *uIteratorAug) Next() (ok bool) {
 		if !ok { ok = i.iter.Next() }
 	case 2:
 		if len(i.ptr)>0 {
-			if bytes.Compare(i.ptr[0],i.iter.Key())<=0 {
-				i.ptr = i.ptr[1:]
-				ok = true
-			}
+			i.ptr = i.ptr[1:]
+			ok = len(i.ptr)>0
 		}
+		return
 	}
 	if ok { i.state = 1 } else { i.state = 2 }
 	return
 }
 func (i *uIteratorAug) Key() []byte {
+	if i.state==2 { if len(i.ptr)==0 { return nil } else { return i.ptr[0] } }
 	k := i.iter.Key()
 	if len(i.ptr)>0 { if bytes.Compare(i.ptr[0],k)<=0 { return i.ptr[0] } }
 	return k
@@ -205,9 +205,33 @@ func (t *uTableSR) Write(key,value []byte) error {
 	return nil
 }
 
+func (t *uTableSR) Iter() UIterator {
+	if !t.sorted {
+		sort.Slice(t.k,func(i,j int)bool {
+			return bytes.Compare(t.k[i],t.k[j])<0
+		})
+		t.sorted = true
+	}
+	iter := t.r.NewIterator(nil,&t.ro)
+	return &uIteratorSR{&uIteratorAug{iter:iter,list:t.k},t}
+}
+
 type uIteratorSR struct{
 	UIterator
 	tab *uTableSR
+}
+func (i *uIteratorSR) Seek(key []byte) bool {
+	if !i.UIterator.Seek(key) { return false }
+	if b,ok := i.tab.w[string(i.UIterator.Key())]; ok && len(b)==0 { return i.Next() }
+	return true
+}
+func (i *uIteratorSR) Next() bool {
+	for i.UIterator.Next() {
+		// If the record is deleted, continue.
+		if b,ok := i.tab.w[string(i.UIterator.Key())]; ok && len(b)==0 { continue }
+		return true
+	}
+	return false
 }
 func (i *uIteratorSR) Value() []byte {
 	key := i.UIterator.Key()
@@ -222,10 +246,6 @@ func (i *uIteratorSR) Value() []byte {
 		i.tab.rm[string(key)] = bclone(r)
 	}
 	return r
-}
-func (t *uTableSR) Iter() UIterator {
-	iter := t.r.NewIterator(nil,&t.ro)
-	return &uIteratorSR{&uIteratorAug{iter:iter},t}
 }
 
 type uTableIW struct{
