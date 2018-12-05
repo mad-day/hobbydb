@@ -38,10 +38,11 @@ func assureDir(pth string) error {
 		goto enoent
 	}
 	if !s.IsDir() { goto enotdir }
+	return nil
 enotdir:
 	if e2 := os.Remove(pth); e2!=nil { return e2}
 enoent:
-	return os.Mkdir(pth,600)
+	return os.Mkdir(pth,0755)
 }
 func load(pth string) (*leveldb.DB,error) {
 	err := assureDir(pth)
