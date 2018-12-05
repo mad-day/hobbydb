@@ -69,6 +69,14 @@ type Database interface{
 
 // ----------------------------------------------------
 
+type UIterator interface{
+	Release()
+	Next() bool
+	Seek(key []byte) bool
+	Key() []byte
+	Value() []byte
+}
+
 /*
 User's database.
 */
@@ -80,6 +88,8 @@ type UDB interface{
 type UTable interface{
 	Read(key []byte) []byte
 	Write(key,value []byte) error
+	// An Iterator must only be used until the next call to .Write()
+	Iter() UIterator
 }
 
 type UDBM interface{

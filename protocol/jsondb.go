@@ -33,13 +33,11 @@ import (
 )
 /*
  TODO use:
-   "github.com/evanphx/json-patch"
    maybe "gopkg.in/src-d/go-vitess.v1"
 */
 
 var eBYE = fmt.Errorf("bye")
 
-//var quit = regexp.MustCompile(`^quit`)
 var cmd = regexp.MustCompile(`^([a-z0-9_]+)\s+([a-z0-9_]+)(?:\s+(.*))?$`)
 var cmd2 = regexp.MustCompile(`^([a-z0-9_]+)`)
 
@@ -97,6 +95,7 @@ func (c *cctx) perform() error {
 	case "commit":
 		if c.TX==nil { return c.C.PrintfLine("980 No active transaction") }
 		err = c.TX.Commit()
+		c.TX = nil
 		if err!=nil { return c.C.PrintfLine("710 Abort: %v",err) }
 		return c.C.PrintfLine("200 OK")
 	case "rollback":
@@ -123,9 +122,13 @@ func (c *cctx) perform() error {
 		defer dw.Close()
 		_,err = dw.Write(u.Read(mykey))
 		return err
-	case "put","merge","patch":
-		myup,err = c.C.ReadDotBytes()
-		if err!=nil { return err }
+	case "put","delete","merge","patch":
+		if string(args[0])=="delete" {
+			myup = nil
+		} else {
+			myup,err = c.C.ReadDotBytes()
+			if err!=nil { return err }
+		}
 		mykey,err = normalizeJson(args[2])
 		if err!=nil { return c.C.PrintfLine("901 Invalid Key: %v",err) }
 		if errt1!=nil { return c.C.PrintfLine("800 IO Error: %v",err) }
@@ -135,7 +138,6 @@ func (c *cctx) perform() error {
 			if len(myvalue)==0 { myvalue=[]byte("{}") }
 		}
 		switch string(args[0]) {
-		case "put":
 		case "merge":
 			myup,err = jsonpatch.MergePatch(myvalue,myup)
 			if err!=nil { return c.C.PrintfLine("998 Invalid merge patch: %v",err) }
@@ -149,12 +151,23 @@ func (c *cctx) perform() error {
 		if err!=nil { return c.C.PrintfLine("700 write op %s: %v",args[0],err) }
 		/*-----------------------------------------------------------------------------*/
 		return c.C.PrintfLine("201 updated")
-	//case "list":
+	case "list":
+		iter := u.Iter()
+		defer iter.Release()
+		err = c.C.PrintfLine("202 list collection")
+		if err!=nil { return err }
+		for iter.Next() {
+			c.C.PrintfLine("> %s",iter.Key())
+			dw := c.C.DotWriter()
+			_,err = dw.Write(iter.Value())
+			if err!=nil { return err }
+			err = dw.Close()
+			if err!=nil { return err }
+		}
+		return c.C.PrintfLine("!")
 	}
-	if err!=nil { return err }
-	err = c.C.PrintfLine("Hi! %s",rl)
-	if err!=nil { return err }
-	return err
+	return c.C.PrintfLine("996 unknown command %s",args[0])
+	return nil
 }
 
 func Perform(l lstore.UDBM,c *textproto.Conn) {

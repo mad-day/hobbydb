@@ -26,10 +26,11 @@ package lstore
 import (
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
-	//"github.com/syndtr/goleveldb/leveldb/iterator"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
 	//"github.com/syndtr/goleveldb/leveldb/util"
 	"sync"
 	"bytes"
+	"sort"
 )
 
 func bclone(b []byte) []byte {
@@ -38,6 +39,95 @@ func bclone(b []byte) []byte {
 	copy(c,b)
 	return c
 }
+
+type uIterator struct{
+	iter iterator.Iterator
+	state uint8
+}
+func (i *uIterator) Seek(key []byte) (ok bool) {
+	ok = i.iter.Seek(key)
+	if ok { i.state = 1 } else { i.state = 2 }
+	return
+}
+func (i *uIterator) Next() (ok bool) {
+	switch i.state {
+	case 0: ok = i.iter.First()
+	case 1: ok = i.iter.Next()
+	}
+	if ok { i.state = 1 } else { i.state = 2 }
+	return
+}
+func (i *uIterator) Key() []byte {
+	return i.iter.Key()
+}
+func (i *uIterator) Value() []byte {
+	return i.iter.Value()
+}
+func (i *uIterator) Release() {
+	i.iter.Release()
+}
+
+var _ UIterator = (*uIterator)(nil)
+
+type uIteratorAug struct{
+	iter iterator.Iterator
+	state uint8
+	list,ptr [][]byte
+}
+func (i *uIteratorAug) Seek(key []byte) (ok bool) {
+	ok = i.iter.Seek(key)
+	j := sort.Search(len(i.list),func(k int) bool { return bytes.Compare(i.list[k],key)>=0 })
+	i.ptr = i.list[j:]
+	if ok { i.state = 1 } else {
+		if len(i.ptr)>0 {
+			i.state = 2
+		} else {
+			i.state = 3
+		}
+	}
+	return
+}
+func (i *uIteratorAug) Next() (ok bool) {
+	switch i.state {
+	case 0:
+		i.ptr = i.list
+		ok = i.iter.First()
+		if !ok && len(i.ptr)>0 {
+			i.state = 2
+			return true
+		}
+	case 1:
+		if len(i.ptr)>0 {
+			if bytes.Compare(i.ptr[0],i.iter.Key())<=0 {
+				i.ptr = i.ptr[1:]
+				ok = true
+			}
+		}
+		if !ok { ok = i.iter.Next() }
+	case 2:
+		if len(i.ptr)>0 {
+			if bytes.Compare(i.ptr[0],i.iter.Key())<=0 {
+				i.ptr = i.ptr[1:]
+				ok = true
+			}
+		}
+	}
+	if ok { i.state = 1 } else { i.state = 2 }
+	return
+}
+func (i *uIteratorAug) Key() []byte {
+	k := i.iter.Key()
+	if len(i.ptr)>0 { if bytes.Compare(i.ptr[0],k)<=0 { return i.ptr[0] } }
+	return k
+}
+func (i *uIteratorAug) Value() []byte {
+	return i.iter.Value()
+}
+func (i *uIteratorAug) Release() {
+	i.iter.Release()
+}
+
+var _ UIterator = (*uIteratorAug)(nil)
 
 type uTableRO struct{
 	ro opt.ReadOptions
@@ -49,6 +139,10 @@ func (t *uTableRO) Read(key []byte) []byte {
 	return r
 }
 func (t *uTableRO) Write(key,value []byte) error { return ERO }
+func (t *uTableRO) Iter() UIterator {
+	iter := t.r.NewIterator(nil,&t.ro)
+	return &uIterator{iter:iter}
+}
 
 type uTableD struct{
 	uTableRO
@@ -82,6 +176,7 @@ type uTableSR struct{
 	rm map[string][]byte
 	w map[string][]byte
 	k [][]byte
+	sorted bool
 	tt TableDB
 }
 func (t *uTableSR) Read(key []byte) []byte {
@@ -103,10 +198,34 @@ func (t *uTableSR) Write(key,value []byte) error {
 	if ok,_ := t.r.Has(key,&t.ro); !ok {
 		if _,ok := t.w[string(key)]; !ok {
 			t.k = append(t.k,bclone(key))
+			t.sorted = false
 		}
 	}
 	t.w[string(key)] = bclone(value)
 	return nil
+}
+
+type uIteratorSR struct{
+	UIterator
+	tab *uTableSR
+}
+func (i *uIteratorSR) Value() []byte {
+	key := i.UIterator.Key()
+	if i.tab.rm==nil { i.tab.rm = make(map[string][]byte) }
+	if b,ok := i.tab.w[string(key)]; ok { return bclone(b) }
+	if !i.tab.f.Has(F_ReRead) {
+		if b,ok := i.tab.rm[string(key)]; ok { return bclone(b) }
+	}
+	r := i.UIterator.Value()
+	
+	if !i.tab.f.Has(F_TxIgnoreRead) {
+		i.tab.rm[string(key)] = bclone(r)
+	}
+	return r
+}
+func (t *uTableSR) Iter() UIterator {
+	iter := t.r.NewIterator(nil,&t.ro)
+	return &uIteratorSR{&uIteratorAug{iter:iter},t}
 }
 
 type uTableIW struct{
@@ -115,7 +234,7 @@ type uTableIW struct{
 	writer *sync.RWMutex
 	optim Flags
 }
-func (t *uTableIW) Write(key,value []byte) error {
+func (t *uTableIW) Write(key,value []byte) (rerr error) {
 	if t.optim.Has(O_ConcurrentCommit) {
 		t.writer.RLock(); defer t.writer.RUnlock()
 	} else {
@@ -123,18 +242,29 @@ func (t *uTableIW) Write(key,value []byte) error {
 	}
 	var myw BasicWriter = t.tt
 	if t.optim.Has(O_UseTransaction) {
-		var err error
-		if myw,err = t.tt.Begin(); err!=nil { return err }
+		if tx,err := t.tt.Begin(); err!=nil {
+			return err
+		} else {
+			defer func () {
+				if rerr==nil {
+					rerr = tx.Commit()
+				} else {
+					tx.Discard()
+				}
+			}()
+			myw = tx
+		}
+		
 	}
 	ov,ok := t.w[string(key)]
 	if !ok { ov,ok = t.rm[string(key)] }
 	if ok {
 		ev,_ := myw.Get(key,&t.ro)
-		if !bytes.Equal(ov,ev) { return ErrConcurrentUpdate }
+		if !bytes.Equal(ov,ev) { rerr = ErrConcurrentUpdate ; return }
 	}
-	if err := myw.Put(key,value,&t.outopt); err!=nil { return err }
+	if err := myw.Put(key,value,&t.outopt); err!=nil { rerr = err ; return }
 	t.uTableSR.Write(key,value)
-	return nil
+	return
 }
 
 
