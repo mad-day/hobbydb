@@ -42,6 +42,8 @@ func (d *Database) Add(tab sql.Table) {
 	n[tab.Name()] = tab
 	d.tables = n
 }
+func (d *Database) SetName(name string) { d.name = name }
+
 func (d *Database) Name() string { return d.name }
 func (d *Database) Tables() map[string]sql.Table { return d.tables }
 
