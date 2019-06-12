@@ -28,6 +28,7 @@ package sqlx
 
 import "github.com/src-d/go-mysql-server/sql"
 import "github.com/mad-day/hobbydb/modern/schema"
+import "github.com/mad-day/hobbydb/modern/containers"
 import "sync"
 
 type Tx interface{
@@ -41,7 +42,7 @@ type DynamicTransactionalTable interface {
 }
 
 type DynamicSchemaTable interface {
-	GetTableOf(id,db string,tmd *schema.TableMetadata) (sql.Table,[]sql.Index,error)
+	GetTableOf(db string,tmd *schema.TableMetadata) (sql.Table,[]sql.Index,error)
 }
 type DynamicSchemaTableTx interface {
 	DynamicSchemaTable
@@ -102,8 +103,13 @@ func (w *wtg) g(f func(e error)) {
 	f(w.e)
 }
 
+func (d *DatabaseTx) clear() {
+	d.tx = nil
+}
+
 var _ DynamicSchemaDatabaseTx = (*DatabaseTx)(nil)
 func (d *DatabaseTx) Commit() (err2 error) {
+	defer d.clear()
 	for _,c := range d.tx {
 		err := c.Commit()
 		if err2==nil { err2 = err }
@@ -111,6 +117,7 @@ func (d *DatabaseTx) Commit() (err2 error) {
 	return
 }
 func (d *DatabaseTx) CommitWith(f func(e error)) {
+	defer d.clear()
 	w := new(wtg)
 	w.Add(1)
 	defer w.Done()
@@ -121,9 +128,37 @@ func (d *DatabaseTx) CommitWith(f func(e error)) {
 	}
 }
 func (d *DatabaseTx) Discard() {
+	defer d.clear()
 	for _,c := range d.tx {
 		c.Discard()
 	}
 }
+
+func BuildDatabase(cat *sql.Catalog,dbn string,dbs DynamicSchemaDatabase, tables []*schema.TableMetadata, NOTFOUND error) error {
+	
+	cdb := new(containers.Database)
+	cdb.SetName(dbn)
+	cat.AddDatabase(cdb)
+	
+	for _,table := range tables {
+		dstab := dbs.GetDynamicTable(table.From)
+		if dstab == nil {
+			if NOTFOUND==nil { continue }
+			return NOTFOUND
+		}
+		qtab,qind,err := dstab.GetTableOf(dbn,table)
+		if err!=nil { return err }
+		cdb.Add(qtab)
+		for _,idx := range qind {
+			c,r,err := cat.AddIndex(idx)
+			if err!=nil { return err }
+			close(c)
+			<- r
+		}
+	}
+	
+	return nil
+}
+
 
 // --
