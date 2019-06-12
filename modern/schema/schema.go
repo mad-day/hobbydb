@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 	"fmt"
+	"regexp"
 )
 
 type Type uint
@@ -59,6 +60,14 @@ const (
 	
 	t_max
 )
+
+
+func (t Type) Compatible(v Type) bool {
+	if t==Null { return v==Null }
+	if t<=Float64 { return v>Null && v<=Float64 }
+	if t<=Date { return t>Float64 && v<Date }
+	return t==v
+}
 
 var tsqlv = [...]sql.Type {
 	sql.Null,
@@ -164,7 +173,7 @@ type TableColumn struct{
 	Default  interface{}
 	Nullable bool
 }
-func (t *TableColumn) ToSqlColumn(tab string) *sql.Column {
+func (t TableColumn) ToSqlColumn(tab string) *sql.Column {
 	tp := t.Type.SqlType()
 	v,_ := tp.Convert(t.Default)
 	return &sql.Column{
@@ -175,14 +184,52 @@ func (t *TableColumn) ToSqlColumn(tab string) *sql.Column {
 		Source   : tab,
 	}
 }
+func (t TableColumn) String() string {
+	d := ""
+	n := ""
+	switch {
+	case t.Default!=nil:
+		v,e := t.Type.SqlType().SQL(t.Default)
+		if e!=nil { break }
+		r,e := sqlparser.ExprFromValue(v)
+		if e!=nil { break }
+		d = " default "+sqlparser.String(r)
+	}
+	if !t.Nullable { n = " not null" }
+	return fmt.Sprint(t.Name," ",t.Type,d,n)
+}
 
 type TableSchema []TableColumn
+func (t TableSchema) Find(col string) (TableColumn,bool) {
+	for _,c := range t {
+		if c.Name!=col { continue }
+		return c,true
+	}
+	return TableColumn{},false
+}
+func (t TableSchema) Has(col string) (bool) {
+	for i := range t {
+		if t[i].Name!=col { continue }
+		return true
+	}
+	return false
+}
 func (t TableSchema) ToSqlSchema(tab string) sql.Schema {
 	s := make(sql.Schema,len(t))
 	for i := range t {
 		s[i] = t[i].ToSqlColumn(tab)
 	}
 	return s
+}
+func (t TableSchema) String() string {
+	bdr := new(strings.Builder)
+	bdr.WriteString("(")
+	for i,v := range t {
+		if i!=0 { bdr.WriteString(", ") }
+		bdr.WriteString(v.String())
+	}
+	bdr.WriteString(")")
+	return bdr.String()
 }
 
 func parsehexint(s string) (interface{},error){
@@ -251,19 +298,35 @@ func FromTablespec(sp *sqlparser.TableSpec) (ts TableSchema,err error) {
 	return
 }
 
+var ct_from = regexp.MustCompile(`from\s+([a-zA-Z0-9_]+)`)
+
 type TableMetadata struct{
 	Name   string
 	Schema TableSchema
+	
+	From   string
 }
+func (t *TableMetadata) String() string {
+	return fmt.Sprintf("create table %s %v from %s",t.Name,t.Schema,t.From)
+}
+func (t *TableMetadata) SqlSchema() sql.Schema {
+	return t.Schema.ToSqlSchema(t.Name)
+}
+
 func ParseTableMetadata(s *sqlparser.DDL) (md *TableMetadata,err error) {
 	if s.Action!=sqlparser.CreateStr { return nil,fmt.Errorf("Expected 'create', got '%s'",s.Action) }
 	
 	md = new(TableMetadata)
 	
 	md.Name = s.Table.Name.String()
+	md.From = md.Name
 	
 	md.Schema,err = FromTablespec(s.TableSpec)
 	if err!=nil { return }
+	
+	if sm := ct_from.FindStringSubmatch(s.TableSpec.Options); len(sm)!=0 {
+		md.From = sm[1]
+	}
 	
 	return
 }
@@ -275,6 +338,9 @@ type TableMasterMetadata struct{
 	Index    [][]string
 	Unique   [][]string
 	Options  string
+}
+func (t *TableMasterMetadata) String() string {
+	return fmt.Sprintf("create master-table %s %v primary key %v indeces %v unique %v options%v",t.Name,t.Schema,t.PKey,t.Index,t.Unique,t.Options)
 }
 
 func ParseTableMasterMetadata(s *sqlparser.DDL) (md *TableMasterMetadata,err error) {
@@ -312,4 +378,27 @@ func ParseTableMasterMetadata(s *sqlparser.DDL) (md *TableMasterMetadata,err err
 	
 	return
 }
-
+func (t *TableMasterMetadata) CompatibleWith(sch *TableMetadata) (compatible bool) {
+	compatible = true
+	
+	for _,col := range sch.Schema {
+		if n,ok := t.Schema.Find(col.Name); ok {
+			if !n.Type.Compatible(col.Type) { compatible = false }
+		}
+	}
+	for _,pk := range t.PKey {
+		if _,ok := sch.Schema.Find(pk); !ok { compatible = false }
+	}
+	for _,elem := range t.Index {
+		for _,e := range elem {
+			if _,ok := sch.Schema.Find(e); !ok { compatible = false }
+		}
+	}
+	for _,elem := range t.Unique {
+		for _,e := range elem {
+			if _,ok := sch.Schema.Find(e); !ok { compatible = false }
+		}
+	}
+	
+	return
+}

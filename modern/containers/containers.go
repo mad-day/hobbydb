@@ -27,6 +27,9 @@ Container object Implementations (like I-Database).
 package containers
 
 import "github.com/src-d/go-mysql-server/sql"
+import "io"
+
+var eof = io.EOF
 
 func clonetbs(t map[string]sql.Table) (n map[string]sql.Table) {
 	n = make(map[string]sql.Table)
@@ -49,4 +52,38 @@ func (d *Database) Tables() map[string]sql.Table { return d.tables }
 
 
 var _ sql.Database = (*Database)(nil)
+
+type PartitionIter []sql.Partition
+var _ sql.PartitionIter = (*PartitionIter)(nil)
+func (p *PartitionIter) Close() error { return nil }
+func (p *PartitionIter) Next() (sql.Partition, error) {
+	l := *p
+	if len(l)==0 { return nil,io.EOF }
+	*p = l[1:]
+	
+	return l[0],nil
+}
+
+type Partition string
+func (p Partition) Key() []byte { return []byte(p) }
+
+type PrimaryKeyLookup struct{
+	Index string
+	Key   []byte
+}
+var _ sql.IndexLookup = (*PrimaryKeyLookup)(nil)
+func (p *PrimaryKeyLookup) Values(sql.Partition) (sql.IndexValueIter, error) {
+	return &IndexValueIter{p.Key},nil
+}
+func (p *PrimaryKeyLookup) Indexes() []string { return []string{p.Index} }
+
+type IndexValueIter [][]byte
+func (p *IndexValueIter) Close() error { return nil }
+func (p *IndexValueIter) Next() ([]byte, error) {
+	l := *p
+	if len(l)==0 { return nil,io.EOF }
+	*p = l[1:]
+	
+	return l[0],nil
+}
 
