@@ -245,9 +245,71 @@ func FromTablespec(sp *sqlparser.TableSpec) (ts TableSchema,err error) {
 			Name: cd.Name.String(),
 			Type: tp,
 			Default: def,
-			Nullable: bool(col.NotNull),
+			Nullable: !bool(col.NotNull),
 		}
 	}
+	return
+}
+
+type TableMetadata struct{
+	Name   string
+	Schema TableSchema
+}
+func ParseTableMetadata(s *sqlparser.DDL) (md *TableMetadata,err error) {
+	if s.Action!=sqlparser.CreateStr { return nil,fmt.Errorf("Expected 'create', got '%s'",s.Action) }
+	
+	md = new(TableMetadata)
+	
+	md.Name = s.Table.Name.String()
+	
+	md.Schema,err = FromTablespec(s.TableSpec)
+	if err!=nil { return }
+	
+	return
+}
+
+type TableMasterMetadata struct{
+	Name     string
+	Schema   TableSchema
+	PKey     []string
+	Index    [][]string
+	Unique   [][]string
+	Options  string
+}
+
+func ParseTableMasterMetadata(s *sqlparser.DDL) (md *TableMasterMetadata,err error) {
+	if s.Action!=sqlparser.CreateStr { return nil,fmt.Errorf("Expected 'create', got '%s'",s.Action) }
+	
+	md = new(TableMasterMetadata)
+	
+	md.Name = s.Table.Name.String()
+	
+	md.Schema,err = FromTablespec(s.TableSpec)
+	if err!=nil { return }
+	
+	for _,idx := range s.TableSpec.Indexes {
+		fmt.Println("[]",idx.Info.Type)
+		switch idx.Info.Type {
+		case "primary key":
+			for _,col := range idx.Columns {
+				md.PKey = append(md.PKey,col.Column.String())
+			}
+		case "key","unique", "unique key":
+			n := make([]string,len(idx.Columns))
+			for i,col := range idx.Columns {
+				n[i] = col.Column.String()
+			}
+			switch idx.Info.Type {
+			case "key":
+				md.Index = append(md.Index,n)
+			case "unique","unique key":
+				md.Unique = append(md.Unique,n)
+			}
+		}
+	}
+	
+	md.Options = s.TableSpec.Options
+	
 	return
 }
 
