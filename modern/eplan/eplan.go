@@ -31,15 +31,7 @@ import "errors"
 import "bytes"
 import "fmt"
 
-/*
-An intermediate Filter, that hasn't been handled by the query planer rule.
-*/
-type UnhandledFilter struct {
-	plan.Filter
-}
-func NewUnhandledFilter(expression sql.Expression, child sql.Node) *UnhandledFilter {
-	return &UnhandledFilter{*plan.NewFilter(expression,child)}
-}
+
 
 var (
 	ErrInternal = errors.New("Internal Error")
