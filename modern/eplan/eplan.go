@@ -298,7 +298,7 @@ func convertFilterExpr(inv bool,expr sql.Expression, fchk TableFieldChecker) (id
 restart:
 	switch v := expr.(type) {
 	case *expression.Not:
-		inv,expr = !inv,v
+		inv,expr = !inv,v.Child
 		goto restart
 	case *expression.In,*expression.NotIn:
 		co := expr.(expression.Comparer)

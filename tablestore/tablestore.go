@@ -176,7 +176,7 @@ restart:
 	if s.iter==nil {
 		return nil,io.EOF
 	}
-	if s.iter.Next() {
+	if !s.iter.Next() {
 		s.iter = nil
 		return nil,io.EOF
 	}

@@ -114,7 +114,7 @@ restart:
 	return
 }
 
-func (s *SimpleTable) GenerateLookupHint(ctx *sql.Context,filter eplan.TableRowFilter) (hint interface{},_ error) {
+func (s *SimpleTable) G_enerateLookupHint(ctx *sql.Context,filter eplan.TableRowFilter) (hint interface{},_ error) {
 	value := 0
 	
 	for i,f := range filter[s.PrimaryKey] {
@@ -128,9 +128,9 @@ func (s *SimpleTable) GenerateLookupHint(ctx *sql.Context,filter eplan.TableRowF
 	return
 }
 
-func (s *SimpleTable) GetSubsetTable(ctx *sql.Context,hint interface{}, filter eplan.TableRowFilter) (sql.Table,error) {
+func (s *SimpleTable) G_etSubsetTable(ctx *sql.Context,hint interface{}, filter eplan.TableRowFilter) (sql.Table,error) {
 	if hint==nil {
-		nhi,err := s.GenerateLookupHint(ctx,filter)
+		nhi,err := s.G_enerateLookupHint(ctx,filter)
 		if err!=nil { return nil,err }
 		hint = nhi
 	}

@@ -234,9 +234,11 @@ func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.No
 		nn,ok := resolveFilters(node)
 		if ok { changed = true; return nn,nil }
 		
+		//fmt.Println(i, "..")
 		nn,ok = resolveJoins(node)
 		if ok { changed = true; return nn,nil }
 		
+		//fmt.Println(i, "...")
 		return node,nil
 	})
 	//fmt.Print("\n\n\n-------",err,changed,"\n",nn,"\n\n\n")
