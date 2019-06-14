@@ -63,6 +63,7 @@ func NewTableFilterArg(expr sql.Expression) *TableFilterArg {
 	return &TableFilterArg{expr:expr}
 }
 func (tfa *TableFilterArg) GetValue() interface{} { return tfa.value }
+func (tfa *TableFilterArg) GetExpr() sql.Expression { return tfa.expr }
 func (tfa TableFilterArg) TransformExpressions(f sql.TransformExprFunc) (*TableFilterArg, error) {
 	if tfa.expr==nil { return &tfa,nil }
 	expr,err := tfa.expr.TransformUp(f)

@@ -247,3 +247,41 @@ func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.No
 	return n,nil
 }
 
+
+func OptimizeLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error) {
+	changed := false
+	
+	nn,err := n.TransformUp(func(node sql.Node) (sql.Node, error){
+		var tab sql.Table
+		var filter eplan.TableRowFilter
+		switch v := node.(type) {
+		case *eplan.TableScan: tab,filter = v.Table,v.RowFilter
+		case *eplan.NestedLoopScan: tab,filter = v.Table,v.RowFilter
+		default: return node,nil
+		}
+		flhg,ok := tab.(eplan.FastLookupHintGenerator)
+		if !ok { return node,nil }
+		
+		hint,err := flhg.GenerateLookupHint(c,filter)
+		if err!=nil { return nil,err }
+		changed = true
+		
+		switch v := node.(type) {
+		case *eplan.TableScan:
+			t := *v
+			t.LookupHint = hint
+			return &t,nil
+		case *eplan.NestedLoopScan:
+			t := *v
+			t.LookupHint = hint
+			return &t,nil
+		}
+		panic("...")
+	})
+	if err!=nil { return nil,err }
+	
+	if changed { return nn,err }
+	
+	return n,nil
+}
+
