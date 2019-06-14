@@ -23,6 +23,8 @@ SOFTWARE.
 
 /*
 Extension to the package sqle/sql.
+
+Deprecated.
 */
 package badgdb
 

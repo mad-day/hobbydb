@@ -28,8 +28,10 @@ package containers
 
 import "github.com/src-d/go-mysql-server/sql"
 import "io"
+import "fmt"
 
 var eof = io.EOF
+var Undefined = fmt.Errorf("undefined")
 
 func clonetbs(t map[string]sql.Table) (n map[string]sql.Table) {
 	n = make(map[string]sql.Table)
@@ -87,3 +89,17 @@ func (p *IndexValueIter) Next() ([]byte, error) {
 	return l[0],nil
 }
 
+/*
+A Table for dummy traffic.
+*/
+type DummyTable struct{
+	ItsName   string
+	ItsSchema sql.Schema
+}
+func (x *DummyTable) Name() string { return x.ItsName }
+func (x *DummyTable) String() string { return "Table{"+x.ItsName+"}" }
+func (x *DummyTable) Schema() sql.Schema { return x.ItsSchema }
+func (x *DummyTable) Partitions(*sql.Context) (sql.PartitionIter, error) { return nil,Undefined }
+func (x *DummyTable) PartitionRows(*sql.Context, sql.Partition) (sql.RowIter, error) { return nil,Undefined }
+
+// ##
