@@ -41,6 +41,11 @@ var insertOperation interface{} = sqlKey{"insert.op"}
 
 func InsertKey() interface{} { return insertOperation }
 
+func InsertValue(ctx *sql.Context) string {
+	str,_ := ctx.Value(insertOperation).(string)
+	return str
+}
+
 var (
 	ECantUpdatePK = parse.ErrUnsupportedFeature.New("Can't update primary key")
 	EUpdateTooManyTables = parse.ErrUnsupportedFeature.New("Update: too many tables")

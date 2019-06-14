@@ -207,6 +207,13 @@ func (t TableSchema) Find(col string) (TableColumn,bool) {
 	}
 	return TableColumn{},false
 }
+func (t TableSchema) FindIndex(col string) (int,bool) {
+	for i,c := range t {
+		if c.Name!=col { continue }
+		return i,true
+	}
+	return -1,false
+}
 func (t TableSchema) Has(col string) (bool) {
 	for i := range t {
 		if t[i].Name!=col { continue }
