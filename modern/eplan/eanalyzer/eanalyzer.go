@@ -282,7 +282,7 @@ func OptimizeLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.
 	})
 	if err!=nil { return nil,err }
 	
-	if changed { return nn,err }
+	if changed { return nn,nil }
 	
 	return n,nil
 }
