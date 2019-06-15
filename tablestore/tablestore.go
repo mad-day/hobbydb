@@ -75,6 +75,8 @@ type SimpleTable struct{
 	PrimaryKey int
 	PKName     string
 }
+
+func (s *SimpleTable) IsPrimaryKey(column string) bool { return s.PKName == column }
 func (s *SimpleTable) Name() string { return s.ItsName }
 func (s *SimpleTable) String() string {
 	return "SimpleTable{"+s.ItsName+"}"
@@ -92,6 +94,7 @@ func (s *SimpleTable) PartitionRows(c *sql.Context, _ sql.Partition) (sql.RowIte
 	
 	return &simpleTableIter{s,iter},nil
 }
+var _ preprocess.PrimaryKeyTable = (*SimpleTable)(nil)
 var _ sql.Table = (*SimpleTable)(nil)
 
 func val2key(val interface{}) (key []byte,err error) {
