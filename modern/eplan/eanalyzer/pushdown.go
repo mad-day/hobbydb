@@ -28,6 +28,7 @@ import "github.com/src-d/go-mysql-server/sql"
 import "github.com/src-d/go-mysql-server/sql/analyzer"
 import "github.com/src-d/go-mysql-server/sql/expression"
 import "github.com/src-d/go-mysql-server/sql/plan"
+import "github.com/mad-day/hobbydb/modern/legacy"
 
 import "fmt"
 
@@ -56,7 +57,7 @@ func splitAt(i int) func(e sql.Expression) int {
 	}
 }
 
-func shiftRight(i int) sql.TransformExprFunc {
+func shiftRight(i int) legacy.TransformExprFunc {
 	return func(expr sql.Expression) (sql.Expression, error) {
 		gf,ok := expr.(*expression.GetField)
 		if !ok { return expr,nil }
@@ -73,7 +74,7 @@ func shiftRight(i int) sql.TransformExprFunc {
 	}
 }
 
-func shiftLeft(i int) sql.TransformExprFunc {
+func shiftLeft(i int) legacy.TransformExprFunc {
 	return func(expr sql.Expression) (sql.Expression, error) {
 		gf,ok := expr.(*expression.GetField)
 		if !ok { return expr,nil }
@@ -87,7 +88,7 @@ func shiftLeft(i int) sql.TransformExprFunc {
 	}
 }
 
-func shiftRename(schema sql.Schema) sql.TransformExprFunc {
+func shiftRename(schema sql.Schema) legacy.TransformExprFunc {
 	return func(expr sql.Expression) (sql.Expression, error) {
 		gf,ok := expr.(*expression.GetField)
 		if !ok { return expr,nil }
@@ -121,7 +122,7 @@ func pushdown(node sql.Node) (sql.Node, bool) {
 		leftsz := len(v.Left.Schema())
 		left,right,center := splitLeftRight(parts,splitAt(leftsz))
 		for i := range right {
-			right[i],err = right[i].TransformUp(shiftRight(leftsz))
+			right[i],err = legacy.TransformUpExpr(right[i],shiftRight(leftsz))
 			if err!=nil { panic(err) }
 		}
 		
@@ -140,7 +141,7 @@ func pushdown(node sql.Node) (sql.Node, bool) {
 		leftsz := len(v.Left.Schema())
 		left,right,center := splitLeftRight(parts,splitAt(leftsz))
 		for i := range right {
-			right[i],err = right[i].TransformUp(shiftRight(leftsz))
+			right[i],err = legacy.TransformUpExpr(right[i],shiftRight(leftsz))
 			if err!=nil { panic(err) }
 		}
 		
@@ -173,7 +174,7 @@ func pushdown(node sql.Node) (sql.Node, bool) {
 		leftsz := len(v.Left.Schema())
 		left,right,center := splitLeftRight(parts,splitAt(leftsz))
 		for i := range right {
-			right[i],err = right[i].TransformUp(shiftRight(leftsz))
+			right[i],err = legacy.TransformUpExpr(right[i],shiftRight(leftsz))
 			if err!=nil { panic(err) }
 		}
 		
@@ -204,6 +205,8 @@ func removeCruft(node sql.Node) (sql.Node, bool) {
 	return nil,false
 }
 
+
+
 /*
 A Push-Down rule, that can!
 */
@@ -220,16 +223,17 @@ func Pushdown(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error
 		return old,nil
 	}
 	
-	nn,err := n.TransformUp(txform)
+	nn,err := legacy.TransformDownNode(n,txform)
 	
 	if err!=nil { return nil,err }
 	if !changed { return n,nil }
-	
+	/*
 	for i := 1; changed && i<8 ; i++ {
 		changed = false
-		nn,err = n.TransformUp(txform)
+		nn,err = legacy.TransformUpNode(n,txform)
 		if err!=nil { return nil,err }
 	}
+	*/
 	
 	return nn,nil
 }

@@ -29,6 +29,7 @@ import "github.com/src-d/go-mysql-server/sql"
 import "github.com/src-d/go-mysql-server/sql/analyzer"
 import "github.com/src-d/go-mysql-server/sql/expression"
 import "github.com/src-d/go-mysql-server/sql/plan"
+import "github.com/mad-day/hobbydb/modern/legacy"
 
 import "reflect"
 import "github.com/mad-day/hobbydb/modern/eplan"
@@ -205,7 +206,7 @@ func resolveJoins(node sql.Node) (sql.Node, bool) {
 	
 	
 	if filter!=nil {
-		expr,err := filter.Expression.TransformUp(shiftLeft(leftlen))
+		expr,err := legacy.TransformUpExpr(filter.Expression,shiftLeft(leftlen))
 		if err!=nil { panic(err) }
 		parts = append(parts[:j],expr)
 		result = plan.NewFilter(expression.JoinAnd(parts...), result)
@@ -222,12 +223,10 @@ func resolveJoins(node sql.Node) (sql.Node, bool) {
 func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error) {
 	//n.TransformUp(debugMe)
 	changed := false
-	
 	//i := 0
-	
 	//fmt.Print("\n\n\n=======\n")
 	
-	nn,err := n.TransformUp(func(node sql.Node) (sql.Node, error){
+	nn,err := legacy.TransformUpNode(n,func(node sql.Node) (sql.Node, error){
 		//i++
 		//fmt.Println(i,":",reflect.TypeOf(node))
 		
@@ -253,7 +252,7 @@ func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.No
 func OptimizeLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error) {
 	changed := false
 	
-	nn,err := n.TransformUp(func(node sql.Node) (sql.Node, error){
+	nn,err := legacy.TransformUpNode(n,func(node sql.Node) (sql.Node, error){
 		var tab sql.Table
 		var filter eplan.TableRowFilter
 		switch v := node.(type) {

@@ -27,6 +27,7 @@ package eplan
 import "github.com/src-d/go-mysql-server/sql"
 import "github.com/src-d/go-mysql-server/sql/plan"
 import "github.com/src-d/go-mysql-server/sql/expression"
+//import "github.com/mad-day/hobbydb/modern/legacy"
 import "errors"
 import "bytes"
 import "fmt"
@@ -64,9 +65,11 @@ func NewTableFilterArg(expr sql.Expression) *TableFilterArg {
 }
 func (tfa *TableFilterArg) GetValue() interface{} { return tfa.value }
 func (tfa *TableFilterArg) GetExpr() sql.Expression { return tfa.expr }
+// DEPRECATED
 func (tfa TableFilterArg) TransformExpressions(f sql.TransformExprFunc) (*TableFilterArg, error) {
 	if tfa.expr==nil { return &tfa,nil }
-	expr,err := tfa.expr.TransformUp(f)
+	//expr,err := legacy.TransformUpExpr(tfa.expr,f)
+	expr,err := f(tfa.expr) // TODO
 	if err!=nil { return nil,err }
 	tfa.expr = expr
 	return &tfa,nil
@@ -93,6 +96,15 @@ type TableFilter struct{
 func NewTableFilterArgs(expr sql.Expression) []*TableFilterArg {
 	return []*TableFilterArg{NewTableFilterArg(expr)}
 }
+func (t TableFilter) doClone() *TableFilter {
+	args := make([]*TableFilterArg,len(t.Arg))
+	for i,arg := range t.Arg {
+		args[i] = arg
+	}
+	t.Arg = args
+	return &t
+}
+// DEPRECATED
 func (t TableFilter) TransformExpressions(f sql.TransformExprFunc) (*TableFilter, error) {
 	args := make([]*TableFilterArg,len(t.Arg))
 	for i,arg := range t.Arg {
@@ -218,6 +230,7 @@ func (t TableRowFilter) Match(row sql.Row) (b bool,e error) {
 	}
 	return
 }
+// DEPRECATED
 func (t TableRowFilter) TransformExpressions(f sql.TransformExprFunc) (nt TableRowFilter, err error) {
 	nt = make(TableRowFilter,len(t))
 	for i,cf := range t {
@@ -229,6 +242,24 @@ func (t TableRowFilter) TransformExpressions(f sql.TransformExprFunc) (nt TableR
 		}
 	}
 	return
+}
+func (t TableRowFilter) WithExpressions(exprs ...sql.Expression) TableRowFilter {
+	nt := make(TableRowFilter,len(t))
+	p := 0
+	for i,cf := range t {
+		nt[i] = make([]*TableFilter,len(cf))
+		for j,ccf := range cf {
+			nccf := ccf.doClone()
+			nt[i][j] = nccf
+			
+			for _,arg := range nccf.Arg {
+				if arg.expr==nil { continue }
+				arg.expr = exprs[p]
+				p++
+			}
+		}
+	}
+	return nt
 }
 func (t TableRowFilter) Expressions() (e []sql.Expression) {
 	for _,cf := range t {
@@ -385,6 +416,10 @@ type TableScan struct{
 	LookupHint interface{}
 }
 func (l TableScan) Expressions() []sql.Expression { return l.RowFilter.Expressions() }
+func (l TableScan) WithExpressions(exprs ... sql.Expression) (sql.Node, error) {
+	l.RowFilter = l.RowFilter.WithExpressions(exprs...)
+	return &l,nil
+}
 func (l TableScan) TransformExpressions(f sql.TransformExprFunc) (sql.Node, error) {
 	var err error
 	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
@@ -422,6 +457,8 @@ func (l *TableScan) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	
 	return &filterRowIter{ri,rf},nil
 }
+func (l *TableScan) WithChildren(childs ... sql.Node) (sql.Node,error) { return l,nil }
+
 var _ sql.Node = (*TableScan)(nil)
 var _ sql.Expressioner = (*TableScan)(nil)
 

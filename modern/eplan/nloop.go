@@ -44,7 +44,16 @@ type NestedLoopScan struct{
 }
 func (l *NestedLoopScan) Schema() sql.Schema { return append(l.Left.Schema(), l.Table.Schema()...) }
 func (l *NestedLoopScan) Children() []sql.Node { return []sql.Node{l.Left} }
+func (l NestedLoopScan) WithChildren(childs ...sql.Node) (sql.Node, error) {
+	l.Left = childs[0]
+	return &l,nil
+}
 func (l *NestedLoopScan) Expressions() []sql.Expression { return l.RowFilter.Expressions() }
+func (l NestedLoopScan) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
+	l.RowFilter = l.RowFilter.WithExpressions(exprs...)
+	return &l,nil
+}
+// DEPRECATED
 func (l NestedLoopScan) TransformExpressions(f sql.TransformExprFunc) (sql.Node, error) {
 	var err error
 	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
@@ -52,22 +61,24 @@ func (l NestedLoopScan) TransformExpressions(f sql.TransformExprFunc) (sql.Node,
 	
 	return &l,nil
 }
+// DEPRECATED
 func (l NestedLoopScan) TransformExpressionsUp(f sql.TransformExprFunc) (sql.Node, error) {
 	var err error
 	
-	l.Left,err = l.Left.TransformExpressionsUp(f)
-	if err!=nil { return nil,err }
+	//l.Left,err = l.Left.TransformExpressionsUp(f)
+	//if err!=nil { return nil,err }
 	
 	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
 	if err!=nil { return nil,err }
 	
 	return &l,nil
 }
+// DEPRECATED
 func (l NestedLoopScan) TransformUp(f sql.TransformNodeFunc) (sql.Node, error) {
-	var err error
+	//var err error
 	
-	l.Left,err = l.Left.TransformUp(f)
-	if err!=nil { return nil,err }
+	//l.Left,err = l.Left.TransformUp(f)
+	//if err!=nil { return nil,err }
 	
 	return f(&l)
 }
