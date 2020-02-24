@@ -27,7 +27,7 @@ package mmapv2
 import "github.com/src-d/go-mysql-server/sql"
 import "github.com/mad-day/hobbydb/modern/containers"
 import "github.com/mad-day/hobbydb/modern/eplan"
-import "github.com/mad-day/hobbydb/modern/preprocess"
+//import "github.com/mad-day/hobbydb/modern/preprocess"
 
 type xte struct {
 	orEq bool
@@ -113,13 +113,36 @@ func (s *SqlTable) Insert(ctx *sql.Context, row sql.Row) error {
 		defer nb.Commit()
 		bat = nb
 	}
+	/*
 	switch preprocess.InsertValue(ctx) {
 	case "","insert": break
 	case "delete": return s.Table.RawDelete(bat,row)
 	case "replace","update": return s.Table.RawUpsert(bat,row)
 	}
+	*/
 	return s.Table.RawInsert(bat,row)
 }
+func (s *SqlTable) Delete(ctx *sql.Context, row sql.Row) error {
+	bat,_ := ctx.Value(s.Table.env).(*BAT)
+	if bat==nil {
+		nb,err := s.Table.env.Begin()
+		if err!=nil { return err }
+		defer nb.Commit()
+		bat = nb
+	}
+	return s.Table.RawDelete(bat,row)
+}
+func (s *SqlTable) Update(ctx *sql.Context, oldr, newr sql.Row) error {
+	bat,_ := ctx.Value(s.Table.env).(*BAT)
+	if bat==nil {
+		nb,err := s.Table.env.Begin()
+		if err!=nil { return err }
+		defer nb.Commit()
+		bat = nb
+	}
+	return s.Table.RawUpdate(bat,oldr,newr)
+}
+
 
 var _ sql.Table = (*SqlTable)(nil)
 

@@ -65,15 +65,8 @@ func NewTableFilterArg(expr sql.Expression) *TableFilterArg {
 }
 func (tfa *TableFilterArg) GetValue() interface{} { return tfa.value }
 func (tfa *TableFilterArg) GetExpr() sql.Expression { return tfa.expr }
-// DEPRECATED
-func (tfa TableFilterArg) TransformExpressions(f sql.TransformExprFunc) (*TableFilterArg, error) {
-	if tfa.expr==nil { return &tfa,nil }
-	//expr,err := legacy.TransformUpExpr(tfa.expr,f)
-	expr,err := f(tfa.expr) // TODO
-	if err!=nil { return nil,err }
-	tfa.expr = expr
-	return &tfa,nil
-}
+func (tfa TableFilterArg) Clone() *TableFilterArg{ return &tfa }
+
 func (tfa *TableFilterArg) String() string {
 	if tfa.expr==nil { return "<nil>" }
 	return tfa.expr.String()
@@ -96,26 +89,15 @@ type TableFilter struct{
 func NewTableFilterArgs(expr sql.Expression) []*TableFilterArg {
 	return []*TableFilterArg{NewTableFilterArg(expr)}
 }
-func (t TableFilter) doClone() *TableFilter {
+func (t TableFilter) Clone() *TableFilter {
 	args := make([]*TableFilterArg,len(t.Arg))
 	for i,arg := range t.Arg {
-		args[i] = arg
+		args[i] = arg.Clone()
 	}
 	t.Arg = args
 	return &t
 }
-// DEPRECATED
-func (t TableFilter) TransformExpressions(f sql.TransformExprFunc) (*TableFilter, error) {
-	args := make([]*TableFilterArg,len(t.Arg))
-	for i,arg := range t.Arg {
-		narg,err := arg.TransformExpressions(f)
-		if err!=nil { return nil,err }
-		args[i] =narg
-	}
-	t.Arg = args
-	
-	return &t,nil
-}
+
 func (t *TableFilter) Match(value interface{}) (bool,error) {
 	switch t.Op {
 	case TF_True,TF_False:
@@ -230,26 +212,14 @@ func (t TableRowFilter) Match(row sql.Row) (b bool,e error) {
 	}
 	return
 }
-// DEPRECATED
-func (t TableRowFilter) TransformExpressions(f sql.TransformExprFunc) (nt TableRowFilter, err error) {
-	nt = make(TableRowFilter,len(t))
-	for i,cf := range t {
-		ncf := make([]*TableFilter,len(cf))
-		nt[i] = ncf
-		for j,cff := range cf {
-			ncf[j],err = cff.TransformExpressions(f)
-			if err!=nil { return }
-		}
-	}
-	return
-}
+
 func (t TableRowFilter) WithExpressions(exprs ...sql.Expression) TableRowFilter {
 	nt := make(TableRowFilter,len(t))
 	p := 0
 	for i,cf := range t {
 		nt[i] = make([]*TableFilter,len(cf))
 		for j,ccf := range cf {
-			nccf := ccf.doClone()
+			nccf := ccf.Clone()
 			nt[i][j] = nccf
 			
 			for _,arg := range nccf.Arg {
@@ -257,6 +227,19 @@ func (t TableRowFilter) WithExpressions(exprs ...sql.Expression) TableRowFilter 
 				arg.expr = exprs[p]
 				p++
 			}
+		}
+	}
+	return nt
+}
+/*
+Shallow clone.
+*/
+func (t TableRowFilter) Clone() TableRowFilter {
+	nt := make(TableRowFilter,len(t))
+	for i,cf := range t {
+		nt[i] = make([]*TableFilter,len(cf))
+		for j,ccf := range cf {
+			nt[i][j] = ccf.Clone()
 		}
 	}
 	return nt
@@ -291,25 +274,34 @@ func (t TableRowFilter) Evaluate(ctx *sql.Context,row sql.Row) (err error) {
 	return
 }
 
-/*
-Shallow clone.
-*/
-func (t TableRowFilter) Clone() TableRowFilter {
-	var e error
-	t,e = t.TransformExpressions(blindXform)
-	if e!=nil { panic(e) }
+func exprClone(e sql.Expression) sql.Expression {
+	if e==nil { return nil }
+	oe := e.Children()
+	var ne []sql.Expression
+	if len(oe)>0 { ne = make([]sql.Expression,len(oe)) }
+	for i,ec := range oe { ne[i] = exprClone(ec) }
+	res,err := e.WithChildren(ne...)
+	if err!=nil { panic(err) }
+	return res
+}
+func (t TableRowFilter) deepExprs() TableRowFilter {
+	for _,cf := range t {
+		for _,ccf := range cf {
+			for _,arg := range ccf.Arg {
+				arg.expr = exprClone(arg.expr)
+			}
+		}
+	}
 	return t
 }
 
 /*
-Deep clone.
+Deep clone. Not Recommended.
 */
 func (t TableRowFilter) DeepClone() TableRowFilter {
-	var e error
-	t,e = t.TransformExpressions(blindXform)
-	if e!=nil { panic(e) }
-	return t
+	return t.Clone().deepExprs()
 }
+
 
 /*
 A function to be supplied
@@ -420,29 +412,13 @@ func (l TableScan) WithExpressions(exprs ... sql.Expression) (sql.Node, error) {
 	l.RowFilter = l.RowFilter.WithExpressions(exprs...)
 	return &l,nil
 }
-func (l TableScan) TransformExpressions(f sql.TransformExprFunc) (sql.Node, error) {
-	var err error
-	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
-	if err!=nil { return nil,err }
-	
-	return &l,nil
-}
-func (l TableScan) TransformExpressionsUp(f sql.TransformExprFunc) (sql.Node, error) {
-	var err error
-	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
-	if err!=nil { return nil,err }
-	
-	return &l,nil
-}
-func (l *TableScan) TransformUp(f sql.TransformNodeFunc) (sql.Node, error) { return f(l) }
 func (l *TableScan) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	
-	// Hack: Copy the l.RowFilter
-	rf,err := l.RowFilter.TransformExpressions(blindXform)
-	if err!=nil { return nil,err }
+	// Copy the l.RowFilter
+	rf := l.RowFilter.Clone()
 	
 	// Set the search key.
-	err = rf.Evaluate(ctx,sql.Row{})
+	err := rf.Evaluate(ctx,sql.Row{})
 	if err!=nil { return nil,err }
 	
 	tab := l.Table

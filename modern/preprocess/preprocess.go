@@ -23,6 +23,7 @@ SOFTWARE.
 
 /*
 Preprocessing Stuff.
+DEPRECATED: github.com/src-d/go-mysql-server now supports updates and deletes.
 */
 package preprocess
 

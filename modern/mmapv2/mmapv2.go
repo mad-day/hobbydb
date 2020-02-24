@@ -144,10 +144,16 @@ func (e *ENV) Table(name string) *Table {
 func (t *Table) RawInsert(bat *BAT,row []interface{}) error {
 	return t.rawWrite(bat,true,row)
 }
+// DEPRECATED
 func (t *Table) RawUpsert(bat *BAT,row []interface{}) error {
 	// Delete old version first, if any!
 	t.RawDelete(bat,row)
 	return t.rawWrite(bat,false,row)
+}
+func (t *Table) RawUpdate(bat *BAT,oldr,newr []interface{}) error {
+	// Delete old version first, if any!
+	t.RawDelete(bat,oldr)
+	return t.rawWrite(bat,false,newr)
 }
 func (t *Table) rawWrite(bat *BAT,genkey bool,row []interface{}) error {
 	if t.env != bat.env { panic("illegal state: bat.env != env") }

@@ -53,35 +53,7 @@ func (l NestedLoopScan) WithExpressions(exprs ...sql.Expression) (sql.Node, erro
 	l.RowFilter = l.RowFilter.WithExpressions(exprs...)
 	return &l,nil
 }
-// DEPRECATED
-func (l NestedLoopScan) TransformExpressions(f sql.TransformExprFunc) (sql.Node, error) {
-	var err error
-	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
-	if err!=nil { return nil,err }
-	
-	return &l,nil
-}
-// DEPRECATED
-func (l NestedLoopScan) TransformExpressionsUp(f sql.TransformExprFunc) (sql.Node, error) {
-	var err error
-	
-	//l.Left,err = l.Left.TransformExpressionsUp(f)
-	//if err!=nil { return nil,err }
-	
-	l.RowFilter,err = l.RowFilter.TransformExpressions(f)
-	if err!=nil { return nil,err }
-	
-	return &l,nil
-}
-// DEPRECATED
-func (l NestedLoopScan) TransformUp(f sql.TransformNodeFunc) (sql.Node, error) {
-	//var err error
-	
-	//l.Left,err = l.Left.TransformUp(f)
-	//if err!=nil { return nil,err }
-	
-	return f(&l)
-}
+
 func (l *NestedLoopScan) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	ri,err := l.Left.RowIter(ctx)
 	if err!=nil { return nil,err }
@@ -110,12 +82,11 @@ type nestedLoopJoin struct {
 
 func (l *NestedLoopScan) rightLookup(ctx *sql.Context,row sql.Row) (sql.RowIter, error) {
 	
-	// Hack: Copy the l.RowFilter
-	rf,err := l.RowFilter.TransformExpressions(blindXform)
-	if err!=nil { return nil,err }
+	// Copy the l.RowFilter
+	rf := l.RowFilter.Clone()
 	
 	// Set the search key.
-	err = rf.Evaluate(ctx,row)
+	err := rf.Evaluate(ctx,row)
 	if err!=nil { return nil,err }
 	
 	tab := l.Table
