@@ -57,6 +57,17 @@ func splitAt(i int) func(e sql.Expression) int {
 	}
 }
 
+func translateProject(proj *plan.Project) legacy.TransformExprFunc {
+	return func(expr sql.Expression) (sql.Expression, error) {
+		gf,ok := expr.(*expression.GetField)
+		if !ok { return expr,nil }
+		if gf.Index() > len(proj.Projections) {
+			return nil,fmt.Errorf("index out of range: %d not in [0...%d]",gf.Index(),len(proj.Projections)-1)
+		}
+		return proj.Projections[gf.Index()],nil
+	}
+}
+
 func shiftRight(i int) legacy.TransformExprFunc {
 	return func(expr sql.Expression) (sql.Expression, error) {
 		gf,ok := expr.(*expression.GetField)
@@ -189,6 +200,19 @@ func pushdown(node sql.Node) (sql.Node, bool) {
 		if len(center)>0 { result = plan.NewFilter(expression.JoinAnd(center...),result) }
 		
 		return result,true
+	case *plan.SubqueryAlias:
+		cld := tryPushdown(plan.NewFilter(filter.Expression,v.Child))
+		
+		return plan.NewSubqueryAlias(v.Name(),cld),true
+	case *plan.QueryProcess:
+		cld := tryPushdown(plan.NewFilter(filter.Expression,v.Child))
+		
+		return plan.NewQueryProcess(cld,v.Notify),true
+	case *plan.Project:
+		nexpr,err := legacy.TransformUpExpr(filter.Expression,translateProject(v))
+		if err!=nil { panic(err) }
+		
+		return plan.NewProject(v.Projections,plan.NewFilter(nexpr,v.Child)),true
 	//case *plan.TableAlias:
 	//	nx,err := filter.Expression.TransformUp(shiftRename(v.Child.Schema()))
 	//	if err!=nil { return nil,false }
@@ -197,10 +221,16 @@ func pushdown(node sql.Node) (sql.Node, bool) {
 	
 	return nil,false
 }
+func tryPushdown(n sql.Node) sql.Node {
+	if nn,ok := pushdown(n); ok { return nn }
+	return n
+}
 
 func removeCruft(node sql.Node) (sql.Node, bool) {
 	switch v := node.(type) {
 	case *plan.TableAlias: return v.Child,true
+	//case *plan.QueryProcess: return v.Child,true
+	//case *plan.SubqueryAlias: return v.Child,true
 	}
 	return nil,false
 }
@@ -219,6 +249,8 @@ func Pushdown(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error
 		
 		node,ok = pushdown(old)
 		if ok { changed,old = true,node }
+		
+		//fmt.Println("-",node)
 		
 		return old,nil
 	}

@@ -221,12 +221,11 @@ func resolveJoins(node sql.Node) (sql.Node, bool) {
 
 
 func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error) {
-	//n.TransformUp(debugMe)
 	changed := false
 	//i := 0
 	//fmt.Print("\n\n\n=======\n")
 	
-	nn,err := legacy.TransformUpNode(n,func(node sql.Node) (sql.Node, error){
+	nn,err := legacy.TransformUpNodeWithSubqueries(n,func(node sql.Node) (sql.Node, error){
 		//i++
 		//fmt.Println(i,":",reflect.TypeOf(node))
 		
@@ -252,7 +251,7 @@ func CreateLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.No
 func OptimizeLookupNodes(c *sql.Context, a *analyzer.Analyzer, n sql.Node) (sql.Node, error) {
 	changed := false
 	
-	nn,err := legacy.TransformUpNode(n,func(node sql.Node) (sql.Node, error){
+	nn,err := legacy.TransformUpNodeWithSubqueries(n,func(node sql.Node) (sql.Node, error){
 		var tab sql.Table
 		var filter eplan.TableRowFilter
 		switch v := node.(type) {
