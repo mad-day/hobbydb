@@ -25,6 +25,7 @@ package msgp
 
 import "bytes"
 import . "github.com/vmihailenco/msgpack"
+import "github.com/vmihailenco/msgpack"
 import "github.com/src-d/go-mysql-server/sql"
 
 func MarshalMulti(v ...interface{}) ([]byte, error) {
@@ -49,6 +50,21 @@ func Unmarshal(data []byte, v interface{}) error {
 type Entity struct{
 	record map[string]interface{}
 }
+
+
+// Implement msgpack.CustomDecoder
+func (e *Entity) DecodeMsgpack(dec *msgpack.Decoder) error {
+	return dec.Decode(e.record)
+}
+var _ msgpack.CustomDecoder = (*Entity)(nil)
+
+// Implement msgpack.CustomEncoder
+func (e *Entity) EncodeMsgpack(enc *msgpack.Encoder) error {
+	return enc.Encode(e.record)
+}
+var _ msgpack.CustomEncoder = (*Entity)(nil)
+
+
 func (e *Entity) Init() {
 	e.record = make(map[string]interface{})
 }
